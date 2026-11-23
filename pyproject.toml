@@ -5,7 +5,10 @@ description = "Ask your devices' manuals, and measure whether RAG still beats th
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "pymupdf>=2.1",
+    "pyyaml>=6.0.4",
+]
 
 [dependency-groups]
 dev = [
@@ -34,7 +37,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.pyright]
 include = ["src", "tests", "tools"]
-extraPaths = ["tools"]
+extraPaths = ["src", "tools"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
