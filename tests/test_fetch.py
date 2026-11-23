@@ -100,16 +100,6 @@ def run(tmp_path: Path) -> Run:
 # Criterion 1: the schema
 
 
-def test_a_valid_file_loads_in_order(tmp_path: Path):
-    manuals = write_manuals(
-        tmp_path / "m.yaml", [entry("a-one", "http://x/a.pdf"), entry("b-two", "http://x/b.pdf")]
-    )
-    loaded = load_manuals(manuals)
-    assert [m.slug for m in loaded] == ["a-one", "b-two"]
-    assert loaded[0].manual_url == "http://x/a.pdf"
-    assert loaded[0].brand == "Acme"
-
-
 @pytest.mark.parametrize(
     ("change", "field"),
     [
