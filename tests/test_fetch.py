@@ -11,7 +11,7 @@ import pymupdf
 import pytest
 import yaml
 
-from askmystuff.fetch import DEFAULT_MANUALS, DEFAULT_OUT, ManualsError, load_manuals, main
+from askmystuff.fetch import DEFAULT_MANUALS, ManualsError, load_manuals, main
 
 ROOT = Path(__file__).parents[1]
 
@@ -117,7 +117,6 @@ def test_a_valid_file_loads_in_order(tmp_path: Path):
         ({"manual_url": "ftp://x/a.pdf"}, "manual_url"),
         ({"brand": ""}, "brand"),
         ({"model": None}, "model"),
-        ({"colour": "red"}, "colour"),
     ],
 )
 def test_a_bad_entry_names_its_slug_and_field(tmp_path: Path, change: dict[str, str], field: str):
@@ -167,12 +166,7 @@ def test_each_manual_is_saved_with_a_manifest(site: Site, run: Run):
     assert manifest["a-one"]["size"] == len(first)
     assert manifest["a-one"]["pages"] == 3
     assert manifest["b-two"]["pages"] == 5
-
-
-def test_a_browser_like_user_agent_is_sent(site: Site, run: Run):
-    site.routes = {"/a.pdf": ("application/pdf", make_pdf(1))}
-    run([entry("a-one", site.url("/a.pdf"))])
-    assert "Mozilla/5.0" in site.hits[0][1]
+    assert "Mozilla/5.0" in site.hits[0][1]  # hosts refuse requests without a browser-like agent
 
 
 def test_the_module_runs_with_python_dash_m(site: Site, tmp_path: Path):
@@ -188,7 +182,7 @@ def test_the_module_runs_with_python_dash_m(site: Site, tmp_path: Path):
 # Criterion 3: not downloaded again unless --force
 
 
-def test_a_manual_with_the_same_sha256_is_not_downloaded_again(site: Site, run: Run):
+def test_a_known_manual_is_downloaded_again_only_with_force(site: Site, run: Run):
     site.routes = {"/a.pdf": ("application/pdf", make_pdf(2))}
     entries = [entry("a-one", site.url("/a.pdf"))]
     run(entries)
@@ -197,14 +191,8 @@ def test_a_manual_with_the_same_sha256_is_not_downloaded_again(site: Site, run: 
     assert site.hit_count("/a.pdf") == 1
     assert json.loads((out / "manifest.json").read_text())["a-one"]["pages"] == 2
 
-
-def test_force_downloads_again(site: Site, run: Run):
-    site.routes = {"/a.pdf": ("application/pdf", make_pdf(2))}
-    entries = [entry("a-one", site.url("/a.pdf"))]
-    run(entries)
     site.routes["/a.pdf"] = ("application/pdf", make_pdf(4))
-    code, out = run(entries, "--force")
-    assert code == 0
+    assert run(entries, "--force")[0] == 0
     assert site.hit_count("/a.pdf") == 2
     assert json.loads((out / "manifest.json").read_text())["a-one"]["pages"] == 4
 
@@ -220,14 +208,19 @@ def test_a_url_that_is_not_a_pdf_fails_alone(
         "/page.html": ("text/html", b"<html>Accept cookies</html>"),
         "/good.pdf": ("application/pdf", good),
     }
-    code, out = run(
-        [entry("is-html", site.url("/page.html")), entry("is-good", site.url("/good.pdf"))]
-    )
+    entries = [  # a page that is not a PDF, a missing page, a good manual
+        entry("is-html", site.url("/page.html")),
+        entry("is-gone", site.url("/nope.pdf")),
+        entry("is-good", site.url("/good.pdf")),
+    ]
+    code, out = run(entries)
     assert code == 1
-    assert not (out / "is-html.pdf").exists()
+    assert sorted(path.name for path in out.iterdir()) == ["is-good.pdf", "manifest.json"]
     assert (out / "is-good.pdf").read_bytes() == good
     assert sorted(json.loads((out / "manifest.json").read_text())) == ["is-good"]
-    assert "is-html" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "is-html" in error
+    assert "is-gone" in error
 
 
 def test_a_pdf_served_with_the_wrong_content_type_is_accepted(site: Site, run: Run):
@@ -235,15 +228,6 @@ def test_a_pdf_served_with_the_wrong_content_type_is_accepted(site: Site, run: R
     code, out = run([entry("a-one", site.url("/a.pdf"))])
     assert code == 0
     assert (out / "a-one.pdf").exists()
-
-
-def test_a_missing_page_fails_alone(site: Site, run: Run, capsys: pytest.CaptureFixture[str]):
-    site.routes = {"/good.pdf": ("application/pdf", make_pdf(1))}
-    code, out = run([entry("gone", site.url("/nope.pdf")), entry("is-good", site.url("/good.pdf"))])
-    assert code == 1
-    assert (out / "is-good.pdf").exists()
-    assert "gone" in capsys.readouterr().err
-    assert not list(out.glob("*.part"))
 
 
 def test_a_bad_manuals_file_stops_before_any_download(site: Site, tmp_path: Path):

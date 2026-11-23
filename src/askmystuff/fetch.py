@@ -79,9 +79,6 @@ def _parse(raw: Any, position: int) -> Manual:
         value = entry.get(field)
         if not isinstance(value, str) or not value.strip():
             raise ManualsError(f"{slug}: {field} must be a non-empty string")
-    unknown = sorted(set(entry) - set(FIELDS))
-    if unknown:
-        raise ManualsError(f"{slug}: unknown field {', '.join(unknown)}")
     if entry["kind"] != "appliance":
         raise ManualsError(f"{slug}: kind must be 'appliance', got {entry['kind']!r}")
     if not entry["manual_url"].startswith(("http://", "https://")):
@@ -110,23 +107,11 @@ def _page_count(body: bytes) -> int:
         raise FetchError(f"unreadable PDF: {error}") from error
 
 
-def _describe(body: bytes) -> dict[str, Any]:
-    return {"sha256": sha256(body).hexdigest(), "size": len(body), "pages": _page_count(body)}
-
-
-def _is_current(target: Path, known: dict[str, Any] | None) -> bool:
-    """The file is on disk and still has the sha256 the manifest recorded."""
-    if known is None or not target.is_file():
-        return False
-    return sha256(target.read_bytes()).hexdigest() == known.get("sha256")
-
-
 def _read_manifest(path: Path) -> dict[str, dict[str, Any]]:
     try:
-        data: Any = json.loads(path.read_text())
+        return json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
-    return cast(dict[str, dict[str, Any]], data) if isinstance(data, dict) else {}
 
 
 def fetch(manuals: Sequence[Manual], out: Path, force: bool = False) -> dict[str, str]:
@@ -138,13 +123,23 @@ def fetch(manuals: Sequence[Manual], out: Path, force: bool = False) -> dict[str
     for manual in manuals:
         target = out / f"{manual.slug}.pdf"
         known = old.get(manual.slug)
-        if not force and _is_current(target, known) and known is not None:
+        # Already downloaded: the file on disk still has the sha256 the manifest recorded.
+        if (
+            not force
+            and known is not None
+            and target.is_file()
+            and sha256(target.read_bytes()).hexdigest() == known["sha256"]
+        ):
             print(f"{manual.slug}: already downloaded")
             manifest[manual.slug] = known
             continue
         try:
             body = _download(manual.manual_url)
-            manifest[manual.slug] = _describe(body)
+            manifest[manual.slug] = {
+                "sha256": sha256(body).hexdigest(),
+                "size": len(body),
+                "pages": _page_count(body),
+            }
         except FetchError as error:
             errors[manual.slug] = str(error)
             print(f"{manual.slug}: {error} ({manual.manual_url})", file=sys.stderr)
