@@ -1,0 +1,26 @@
+# The PR title and body become the squash commit, and the owner reads them before merging.
+# Runs on edits too, and on every push so the check reports on the latest commit.
+name: PR description
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Length and form of the PR body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/body.md"
+          printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" > "$RUNNER_TEMP/pull-request.md"
+          python3 tools/pr_description.py "$RUNNER_TEMP/body.md"

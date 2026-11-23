@@ -1,0 +1,60 @@
+# Reviewer agent: reads each new PR with a fresh context and posts one review.
+# It reviews again after each push or PR edit by an agent (review fixes, CI fixes).
+name: Agent reviewer
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize, edited]
+
+concurrency:
+  group: agent-reviewer-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      !github.event.pull_request.draft
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && (!contains(fromJSON('["synchronize", "edited"]'), github.event.action) || github.event.sender.login == 'claude[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - uses: anthropics/claude-code-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allow_fork_prs: "false"
+          # Agent PRs are opened by claude[bot]; forks are refused, so their code is trusted.
+          allowed_bots: claude[bot]
+          restrict_untrusted_prs: "false"
+          # `hard` PRs: Opus at high. Others: Sonnet at medium (reads code, judges, writes no code).
+          claude_args: |
+            --model ${{ contains(github.event.pull_request.labels.*.name, 'hard') && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            --effort ${{ contains(github.event.pull_request.labels.*.name, 'hard') && 'high' || 'medium' }}
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Bash(uv run pytest:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(gh pr comment:*),mcp__github_inline_comment__create_inline_comment"
+          prompt: |
+            You are the reviewer agent of ${{ github.repository }}. Review PR #${{ github.event.pull_request.number }}.
+            You did not write it; judge it only by what is in the repository and the linked issue.
+
+            Read the diff, the issue it closes, CLAUDE.md and what it points to. Check, in this order:
+            1. Spec: every acceptance criterion of the issue is met and covered by a test; nothing outside the issue's scope.
+            2. Tests prove something: each test would fail if the behaviour it names broke. Flag tests that check
+               a mock, restate the implementation, or replace the database with a fake.
+            3. Rules of CLAUDE.md, docs/DESIGN.md and the ADRs.
+            4. Bugs and needless complexity.
+
+            Post an inline comment of at most 3 lines for each finding that blocks a merge, on the line concerned.
+            Then post one summary comment with `gh pr comment` that starts with `Verdict: ready to merge` or
+            `Verdict: changes needed` (only if a finding blocks), followed by at most 5 lines: the blocking findings,
+            most severe first, one line each, and at most one last line marked `non-blocking` for minor points.
+            Say nothing about what is fine. Report only findings you can point to in the code.

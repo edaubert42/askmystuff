@@ -1,0 +1,172 @@
+# Coder agent: the owner labels an issue `ready-for-agent`, the agent builds it and opens a PR.
+# An issue blocked by open issues waits; agent-unblock.yml starts it when the last one closes.
+# When the coder stops with questions, the answerer answers what the sources settle and starts
+# the coder again once (tools/questions.py); the owner's reply to what is left starts it too.
+name: Agent coder
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment: # zizmor: ignore[dangerous-triggers] owner-only, see the job condition
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue to build; it must carry `ready-for-agent`, added by the owner
+        required: true
+        type: number
+
+jobs:
+  code:
+    # Job level, not workflow level: a comment whose job is skipped must not cancel a queued restart.
+    concurrency:
+      group: agent-coder-${{ github.event.issue.number || inputs.issue }}
+      cancel-in-progress: false
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || (github.event.label.name == 'ready-for-agent' && github.event.sender.login == github.repository_owner)
+      || (github.event_name == 'issue_comment' && !github.event.issue.pull_request
+          && github.event.sender.login == github.repository_owner
+          && contains(github.event.issue.labels.*.name, 'ready-for-agent'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write # gh workflow run, to start the coder again
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Wait for the issues this one is blocked by
+        id: ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # A comment starts the coder only when it answers the questions the coder stopped on.
+          if [ "$EVENT" = issue_comment ] && [ "$(python3 tools/questions.py next "$ISSUE")" != restart ]; then
+            echo "Coder not started: no question waits for the owner"; exit 0
+          fi
+          reason=$(python3 tools/blockers.py check "$ISSUE")
+          hard=$(gh issue view "$ISSUE" --json labels --jq 'any(.labels[]; .name == "hard")')
+          { echo "issue=$ISSUE"; echo "hard=$hard"; echo "started=$(date -u +%FT%TZ)"; } >> "$GITHUB_OUTPUT"
+          case "$reason" in
+            ready) echo "go=true" >> "$GITHUB_OUTPUT" ;;
+            waiting*) gh issue comment "$ISSUE" --body "Coder: $reason; it starts when they are closed." ;;
+            *) echo "Coder not started: $reason" ;;
+          esac
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        if: steps.ready.outputs.go == 'true'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.ready.outputs.go == 'true'
+        with:
+          node-version: 24
+      - uses: anthropics/claude-code-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
+        id: coder
+        if: steps.ready.outputs.go == 'true'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allow_fork_prs: "false"
+          # Restarts (answerer, agent-unblock.yml) dispatch the coder with GITHUB_TOKEN, so the actor is
+          # github-actions[bot]. Only this repository's workflows can do that, and only on main (job condition).
+          allowed_bots: github-actions[bot]
+          # Model per task: `hard` issues get Opus, others Sonnet; both at effort high.
+          claude_args: |
+            --model ${{ steps.ready.outputs.hard == 'true' && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            --effort high
+            --max-turns 120
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(uv:*),Bash(python3 tools/*),Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*)"
+          prompt: |
+            You are the coder agent of ${{ github.repository }}. Build issue #${{ steps.ready.outputs.issue }}.
+
+            1. Read the issue with `gh issue view ${{ steps.ready.outputs.issue }} --comments`, then CLAUDE.md and what it points to.
+               `Answers:` comments and the owner's comments settle earlier questions.
+               If the issue is still ambiguous, comment on it and stop. The comment starts with the line `Questions:`,
+               then numbered questions, each with a recommended answer. Say so when the issue itself looks wrong
+               (an invalid value, a contradiction, a missing file): the answerer leaves those to the owner.
+               Never end without a PR or a `Questions:` comment: a tool you need is denied, a gate cannot run,
+               or the code contradicts the issue (a missing transition, a rule it breaks)? Ask it there and stop.
+            2. Create the branch `agent/issue-${{ steps.ready.outputs.issue }}-<short-slug>` from `main`.
+            3. Work test first: one failing test per acceptance criterion, then the code that makes it pass.
+            4. Run every gate listed in CLAUDE.md until all are green. Commit in small steps.
+               Then review your own diff as the reviewer will: spec, tests that prove something, CLAUDE.md rules, bugs.
+            5. Push the branch and open a PR with `gh pr create`, filling .github/pull_request_template.md (150 words at most),
+               with `Closes #${{ steps.ready.outputs.issue }}`${{ steps.ready.outputs.hard == 'true' && ' and `--label hard`' || '' }}.
+               Done when the PR is open and every gate passed locally.
+            Once `frontend/` exists, its gates are the steps of .github/workflows/frontend-ci.yml, run in `frontend/`
+            (`npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`). A new npm dependency
+            is a question for the owner: `npm install` is not one of your tools.
+
+      # A coder that ends with neither a PR nor a comment would leave the issue waiting in silence.
+      # The log hides the transcript (public repository); the report keeps only the denials and the last message.
+      - name: Say so when the coder stopped without a PR or questions
+        if: ${{ !cancelled() && steps.ready.outputs.go == 'true' }}  # also after max turns or an error
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ steps.ready.outputs.issue }}
+          STARTED: ${{ steps.ready.outputs.started }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EXECUTION_FILE: ${{ steps.coder.outputs.execution_file }}
+        run: |
+          python3 tools/run_report.py "$EXECUTION_FILE" > "$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          pr=$(gh pr list --state open --limit 200 --json headRefName --jq "any(.[]; .headRefName | startswith(\"agent/issue-$ISSUE-\"))")
+          said=$(gh issue view "$ISSUE" --json comments --jq "any(.comments[]; .createdAt >= \"$STARTED\")")
+          if [ "$pr" = false ] && [ "$said" = false ]; then
+            { echo "Coder: stopped without a PR or questions ($RUN)."; echo; cat "$RUNNER_TEMP/report.md"; } > "$RUNNER_TEMP/stop.md"
+            gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/stop.md"
+          fi
+      - name: What comes next on the coder's questions
+        id: after
+        if: steps.ready.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ steps.ready.outputs.issue }}
+        run: echo "next=$(python3 tools/questions.py next "$ISSUE")" >> "$GITHUB_OUTPUT"
+      # Fresh context, read-only: it answers from the sources, it does not build.
+      - uses: anthropics/claude-code-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
+        if: steps.after.outputs.next == 'answer'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allow_fork_prs: "false"
+          # Restarts (answerer, agent-unblock.yml) dispatch the coder with GITHUB_TOKEN, so the actor is
+          # github-actions[bot]. Only this repository's workflows can do that, and only on main (job condition).
+          allowed_bots: github-actions[bot]
+          claude_args: |
+            --model ${{ steps.ready.outputs.hard == 'true' && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            --effort high
+            --max-turns 40
+            --allowedTools "Read,Write,Glob,Grep,Bash(gh issue view:*),Bash(gh issue comment:*)"
+          prompt: |
+            You are the answerer agent of ${{ github.repository }}. The coder stopped on issue #${{ steps.ready.outputs.issue }}
+            with questions. Answer what the sources settle, so the coder can go on without the owner.
+
+            1. Read the issue and its comments with `gh issue view ${{ steps.ready.outputs.issue }} --comments`,
+               then CLAUDE.md, docs/DESIGN.md, docs/adr/ and the code each question is about.
+            2. Sort each question, in this order:
+               - Owner: it touches the evaluation's reference set or thresholds, secrets, or the agent workflows.
+               - Owner: it says the issue itself is wrong (an invalid value, a contradiction, a file it names that
+                 does not exist). The right value lives outside the repo: never guess it.
+               - Answered: a source settles it. Give the answer and the source (`path:line` or `#issue`).
+               - Answered: it has a recommended answer and no source contradicts it. Accept it, source
+                 `recommended, no source against it`. The owner sees it in the PR before merging.
+               - Owner: anything else. Never answer from what only seems likely.
+            3. Write the comment to a file under /tmp and post it with
+               `gh issue comment ${{ steps.ready.outputs.issue }} --body-file <file>`. Exact form, the coder's numbers kept:
+               first line `Answers:`, then one line per answered question: `N. <answer> (<source>)`.
+               If any question is for the owner, then a line `Owner:` and one line per question: `N. <why>`.
+               Short lines, no paragraphs. Post exactly one comment, then stop.
+      - name: Start the coder again when every question is answered
+        if: steps.after.outputs.next == 'answer'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ steps.ready.outputs.issue }}
+        run: |
+          if [ "$(python3 tools/questions.py next "$ISSUE")" = restart ]; then
+            gh workflow run agent-coder.yml -f issue="$ISSUE"
+          fi

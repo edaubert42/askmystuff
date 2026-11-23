@@ -1,0 +1,31 @@
+# When an issue is closed as completed, start the coder on each `ready-for-agent` issue
+# it was the last open blocker of (tools/blockers.py). The coder checks the owner's label again.
+name: Agent unblock
+
+on:
+  issues:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  unblock:
+    if: github.event.issue.state_reason == 'completed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # gh workflow run
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start the coder on issues no longer blocked
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOSED: ${{ github.event.issue.number }}
+        run: |
+          for issue in $(python3 tools/blockers.py unblocked "$CLOSED"); do
+            gh workflow run agent-coder.yml -f issue="$issue"
+          done

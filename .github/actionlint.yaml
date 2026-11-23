@@ -1,0 +1,6 @@
+# actionlint's bundled list of claude-code-action inputs predates allow_fork_prs,
+# which the pinned v1 action.yml does define.
+paths:
+  .github/workflows/agent-*.yml:
+    ignore:
+      - 'input "allow_fork_prs" is not defined'

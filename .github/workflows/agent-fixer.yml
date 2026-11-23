@@ -1,0 +1,196 @@
+# Fixer agent, two triggers:
+# - the owner mentions @claude in an issue or a PR (answer, fix review findings, review again);
+# - CI fails on an agent branch (one automatic attempt per failure, never on its own fix);
+# - the reviewer says `changes needed`: 1st time Sonnet fixes, 2nd time the PR becomes `hard`
+#   and Opus fixes, 3rd time the agents stop and hand over to the owner.
+name: Agent fixer
+
+# Both triggers below run with secrets; each job only runs for the owner or for
+# this repository's own agent branches, never for forks.
+on:
+  issue_comment: # zizmor: ignore[dangerous-triggers] owner-only, see the job conditions
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  workflow_run: # zizmor: ignore[dangerous-triggers] same-repository agent branches only
+    workflows: [CI, Frontend]
+    types: [completed]
+
+jobs:
+  on-mention:
+    if: >-
+      github.event_name != 'workflow_run'
+      && github.event.sender.login == github.repository_owner
+      && contains(github.event.comment.body || github.event.review.body, '@claude')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: anthropics/claude-code-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allow_fork_prs: "false"
+          # Agent PRs are opened by claude[bot]; forks are refused, so their code is trusted.
+          allowed_bots: claude[bot]
+          restrict_untrusted_prs: "false"
+          # Only the owner's and the agents' own comments reach the model.
+          include_comments_by_actor: ${{ github.repository_owner }},claude[bot]
+          additional_permissions: |
+            actions: read
+          claude_args: |
+            --model ${{ (contains(github.event.issue.labels.*.name, 'hard') || contains(github.event.pull_request.labels.*.name, 'hard')) && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            --effort high
+            --max-turns 80
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(uv:*),Bash(python3 tools/*),Bash(git:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh run view:*),Bash(gh run list:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*)"
+
+  on-ci-failure:
+    # CI and Frontend can both fail on one push: one fixer at a time per branch.
+    concurrency:
+      group: agent-fixer-ci-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    if: >-
+      github.event_name == 'workflow_run'
+      && github.event.workflow_run.conclusion == 'failure'
+      && github.event.workflow_run.event == 'pull_request'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+      && startsWith(github.event.workflow_run.head_branch, 'agent/')
+      && !startsWith(github.event.workflow_run.head_commit.message, 'Fix CI:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: anthropics/claude-code-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allow_fork_prs: "false"
+          allowed_bots: claude[bot]
+          restrict_untrusted_prs: "false"
+          additional_permissions: |
+            actions: read
+          claude_args: |
+            --model claude-sonnet-5-5
+            --effort high
+            --max-turns 60
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(uv:*),Bash(python3 tools/*),Bash(git:*),Bash(gh run view:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*)"
+          prompt: |
+            You are the fixer agent of ${{ github.repository }}. CI run ${{ github.event.workflow_run.id }} failed
+            on branch `${{ github.event.workflow_run.head_branch }}`, which you have checked out.
+
+            1. Read the failure with `gh run view ${{ github.event.workflow_run.id }} --log-failed`, then CLAUDE.md.
+            2. Fix the cause, not the symptom: never delete or weaken a test or a check to make it pass.
+               The privacy job never prints the term it found; look for personal data near the reported line.
+            3. Run every gate listed in CLAUDE.md, commit with a message starting with `Fix CI:`, and push.
+            4. If you cannot fix it, comment on the PR explaining why and stop.
+
+  on-review-verdict:
+    if: >-
+      github.event_name == 'issue_comment'
+      && github.event.issue.pull_request
+      && github.event.comment.user.login == 'claude[bot]'
+      && startsWith(github.event.comment.body, 'Verdict: changes needed')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Count the reviewer's failed verdicts on this PR
+        id: verdicts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          count=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '[.[] | select(.user.login == "claude[bot]" and (.body | startswith("Verdict: changes needed")))] | length' \
+            | jq -s add)
+          branch=$(gh pr view "$PR" --repo "$REPO" --json headRefName --jq .headRefName)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Third failed review, hand over to the owner
+        if: steps.verdicts.outputs.count >= 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" --body "Third failed review: the agents stop here. @$OWNER, this one needs you."
+      - name: Second failed review, escalate to hard
+        if: steps.verdicts.outputs.count == 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+        run: gh api "repos/$REPO/issues/$PR/labels" -f "labels[]=hard"
+      - if: steps.verdicts.outputs.count < 3 && startsWith(steps.verdicts.outputs.branch, 'agent/')
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ steps.verdicts.outputs.branch }}
+          fetch-depth: 0
+      - if: steps.verdicts.outputs.count < 3 && startsWith(steps.verdicts.outputs.branch, 'agent/')
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - if: steps.verdicts.outputs.count < 3 && startsWith(steps.verdicts.outputs.branch, 'agent/')
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - if: steps.verdicts.outputs.count < 3 && startsWith(steps.verdicts.outputs.branch, 'agent/')
+        uses: anthropics/claude-code-action@e5812cd75691ca7bbfc57c0ecf4441db3a1ab7dd # v1.0.281
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allow_fork_prs: "false"
+          allowed_bots: claude[bot]
+          restrict_untrusted_prs: "false"
+          # Escalation: Sonnet after the first failed review, Opus after the second. Both at high:
+          # the fix targets review findings, it does not build the issue again.
+          claude_args: |
+            --model ${{ steps.verdicts.outputs.count == 2 && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            --effort high
+            --max-turns 80
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(uv:*),Bash(python3 tools/*),Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh pr comment:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*)"
+          prompt: |
+            You are the fixer agent of ${{ github.repository }}. The reviewer asked for changes on
+            PR #${{ github.event.issue.number }}, branch `${{ steps.verdicts.outputs.branch }}`, which you have checked out.
+
+            1. Read the review with `gh pr view ${{ github.event.issue.number }} --comments`, the issue the PR closes, and CLAUDE.md.
+            2. Fix every finding of the latest review. If you disagree with one, say why in a PR comment instead of changing the code.
+               Never delete or weaken a test or a check.
+            3. Run every gate listed in CLAUDE.md, commit with a message starting with `Fix review:`, and push.
+               The push starts a new review.
+            4. If a finding is about the PR title or description, rewrite them with
+               `python3 tools/edit_pr.py ${{ github.event.issue.number }} --title <title> --body-file <file>`,
+               keeping the template and its 150-word limit: never append.
+               Editing them also starts a new review. Never close or merge a PR.
+            5. If you cannot fix a finding, for example because a tool is denied, say which one and why
+               in a PR comment, then stop. Never end without a push, an edit or a comment.
