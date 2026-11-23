@@ -80,7 +80,7 @@ jobs:
             --model ${{ steps.ready.outputs.hard == 'true' && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
             --effort high
             --max-turns 120
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(uv:*),Bash(python3 tools/*),Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(uv:*),Bash(docker compose:*),Bash(python3 tools/*),Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*)"
           prompt: |
             You are the coder agent of ${{ github.repository }}. Build issue #${{ steps.ready.outputs.issue }}.
 
