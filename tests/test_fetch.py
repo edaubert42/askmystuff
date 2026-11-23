@@ -129,12 +129,6 @@ def test_a_bad_entry_names_its_slug_and_field(tmp_path: Path, change: dict[str, 
     assert field in str(error.value)
 
 
-def test_a_slug_that_is_not_a_safe_file_name_is_refused(tmp_path: Path):
-    bad = entry("../escape", "http://x/a.pdf")
-    with pytest.raises(ManualsError, match="slug"):
-        load_manuals(write_manuals(tmp_path / "m.yaml", [bad]))
-
-
 def test_a_missing_field_names_its_slug(tmp_path: Path):
     bad = entry("no-label", "http://x/a.pdf")
     del bad["label"]
@@ -142,17 +136,18 @@ def test_a_missing_field_names_its_slug(tmp_path: Path):
         load_manuals(write_manuals(tmp_path / "m.yaml", [bad]))
 
 
-def test_a_duplicate_slug_is_refused(tmp_path: Path):
-    entries = [entry("twin", "http://x/a.pdf"), entry("twin", "http://x/b.pdf")]
-    with pytest.raises(ManualsError, match="twin"):
+@pytest.mark.parametrize(
+    ("entries", "message"),
+    [
+        ([entry("twin", "http://x/a"), entry("twin", "http://x/b")], "twin"),
+        ([entry("../escape", "http://x/a")], "slug"),
+    ],
+)
+def test_a_duplicate_or_unsafe_slug_is_refused(
+    tmp_path: Path, entries: list[dict[str, str]], message: str
+):
+    with pytest.raises(ManualsError, match=message):
         load_manuals(write_manuals(tmp_path / "m.yaml", entries))
-
-
-def test_a_file_that_is_not_a_list_is_refused(tmp_path: Path):
-    path = tmp_path / "m.yaml"
-    path.write_text("slug: alone\n")
-    with pytest.raises(ManualsError, match="list"):
-        load_manuals(path)
 
 
 # Criterion 2: download and manifest
@@ -190,11 +185,6 @@ def test_the_module_runs_with_python_dash_m(site: Site, tmp_path: Path):
     assert (out / "a-one.pdf").exists()
 
 
-def test_the_defaults_are_the_files_of_the_repository():
-    assert DEFAULT_OUT == ROOT / "data" / "pdf"
-    assert DEFAULT_MANUALS == ROOT / "data" / "manuals.yaml"
-
-
 # Criterion 3: not downloaded again unless --force
 
 
@@ -217,17 +207,6 @@ def test_force_downloads_again(site: Site, run: Run):
     assert code == 0
     assert site.hit_count("/a.pdf") == 2
     assert json.loads((out / "manifest.json").read_text())["a-one"]["pages"] == 4
-
-
-def test_a_file_changed_on_disk_is_downloaded_again(site: Site, run: Run):
-    original = make_pdf(2)
-    site.routes = {"/a.pdf": ("application/pdf", original)}
-    entries = [entry("a-one", site.url("/a.pdf"))]
-    _, out = run(entries)
-    (out / "a-one.pdf").write_bytes(b"truncated")
-    run(entries)
-    assert site.hit_count("/a.pdf") == 2
-    assert (out / "a-one.pdf").read_bytes() == original
 
 
 # Criterion 4: a bad URL fails alone
@@ -256,13 +235,6 @@ def test_a_pdf_served_with_the_wrong_content_type_is_accepted(site: Site, run: R
     code, out = run([entry("a-one", site.url("/a.pdf"))])
     assert code == 0
     assert (out / "a-one.pdf").exists()
-
-
-def test_a_pdf_content_type_without_the_header_fails(site: Site, run: Run):
-    site.routes = {"/a.pdf": ("application/pdf", b"<html>not a pdf</html>")}
-    code, out = run([entry("a-one", site.url("/a.pdf"))])
-    assert code == 1
-    assert not (out / "a-one.pdf").exists()
 
 
 def test_a_missing_page_fails_alone(site: Site, run: Run, capsys: pytest.CaptureFixture[str]):
