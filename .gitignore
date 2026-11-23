@@ -1,0 +1,6 @@
+data/pdf/
+.env
+__pycache__/
+.venv/
+node_modules/
+docs/PLAN.md
