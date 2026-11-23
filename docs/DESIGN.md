@@ -18,8 +18,10 @@ Both must answer only from the manual, cite `[manual, page]`, and say "not found
 ## Devices
 
 Eight real devices with a French PDF manual from the manufacturer:
-phone, laptop, TV, Chromecast, Bluetooth speaker, Bluetooth headphones, printer, car.
-Two pairs are close on purpose (TV / Chromecast, speaker / headphones): they test that retrieval stays within the selected device.
+phone (Samsung Galaxy S25), laptop (Lenovo ThinkPad P1 Gen 7), TV (Philips Ambilight TV 8501),
+soundbar (Philips TAB5201), Bluetooth speaker (Bose SoundLink Micro),
+Bluetooth headphones (Bose QuietComfort Ultra), printer (Epson EcoTank ET-2830), car (Dacia Duster 2024).
+Two pairs are close on purpose (TV / soundbar: same brand, HDMI eARC, remote; speaker / headphones: same brand, same app): they test that retrieval stays within the selected device.
 The car manual (300+ pages) is where `full` gets expensive or overflows.
 
 The repository holds the manuals' links (`data/manuals.yaml`) and a download script, never the PDFs.

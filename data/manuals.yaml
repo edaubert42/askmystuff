@@ -1,0 +1,18 @@
+# The manuals askmystuff answers from. PDFs are never committed: `uv run python -m askmystuff.fetch`
+# downloads them to data/pdf/ (ignored). Links checked on 2026-11-23: each returns a French PDF.
+- {slug: samsung-galaxy-s25, kind: appliance, brand: Samsung, model: Galaxy S25 / S25+ / S25 Ultra, label: Phone,
+   manual_url: "https://www.electrodepot.fr/media/wysiwyg/page/notice/pdf/fr/N10007625.pdf"}
+- {slug: thinkpad-p1-gen7, kind: appliance, brand: Lenovo, model: ThinkPad P1 Gen 7, label: Laptop,
+   manual_url: "https://download.lenovo.com/pccbbs/mobiles_pdf/p1_gen7_ug_fr.pdf"}
+- {slug: philips-tv-8501, kind: appliance, brand: Philips, model: Ambilight TV 8501 Series, label: TV,
+   manual_url: "https://www.documents.philips.com/assets/20260528/6890600cc29f4a869507b4580081bbc7.pdf"}
+- {slug: philips-soundbar-tab5201, kind: appliance, brand: Philips, model: TAB5201 (5000 Series), label: Soundbar,
+   manual_url: "https://www.documents.philips.com/assets/20251223/82a5e10b4af44b889e36b3bc00829f19.pdf"}
+- {slug: bose-soundlink-micro, kind: appliance, brand: Bose, model: SoundLink Micro, label: Bluetooth speaker,
+   manual_url: "https://assets.bosecreative.com/m/53c4946cfa1ec149/original/791854_OG_SLMCR-SPEAKERWIRELESS_fr.pdf"}
+- {slug: bose-qc-ultra-headphones, kind: appliance, brand: Bose, model: QuietComfort Ultra Headphones, label: Bluetooth headphones,
+   manual_url: "https://www.easylounge.com/cdn/shop/files/37d44191247dd5ed4c6087f212b3f72d713a9f9a_BOSEQCULTRANR_01_notice.pdf"}
+- {slug: epson-ecotank-et-2830, kind: appliance, brand: Epson, model: EcoTank ET-2830, label: Printer,
+   manual_url: "https://download.epson-europe.com/pub/download/6517/epson651787eu.pdf"}
+- {slug: dacia-duster, kind: appliance, brand: Dacia, model: Duster (2024), label: Car,
+   manual_url: "https://cdn.group.renault.com/dac/fr/brochures/notices-utilisation/notice-utilisation-nouveau-duster.pdf.asset.pdf/f804babbd4.pdf"}
