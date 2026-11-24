@@ -15,3 +15,6 @@ class Completion:
     cost_usd: float
     latency_s: float
     model: str
+    # Seconds until the first text arrived: measured by `stream()` only, None for `complete()`
+    # and when the model wrote nothing.
+    first_token_s: float | None = None
