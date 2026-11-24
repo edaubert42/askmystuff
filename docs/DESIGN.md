@@ -29,8 +29,8 @@ The repository holds the manuals' links (`data/manuals.yaml`) and a download scr
 ```
   frontend (Vite, React, TS)     backend (FastAPI)              data
  ┌─────────────────────────┐   ┌──────────────────────────┐   ┌───────────────────┐
- │ devices, question,      │──▶│ POST /ask                │──▶│ Postgres+pgvector │
- │ answer with page link   │◀──│ 1. filter by device      │◀──│ devices           │
+ │ home: prompt + devices  │──▶│ POST /ask                │──▶│ Postgres+pgvector │
+ │ inventory, benchmark    │◀──│ 1. filter by device      │◀──│ devices           │
  └─────────────────────────┘   │ 2. hybrid search (RRF)   │   │ documents         │
                                │ 3. LLM answer + citations│   │ chunks            │
                                └────────────┬─────────────┘   └───────────────────┘
@@ -49,12 +49,21 @@ The repository holds the manuals' links (`data/manuals.yaml`) and a download scr
 
 - **Reference set**: 40 questions, 5 per device: single-page, two-page, no-answer (must refuse), and cross-device traps.
   Questions are drafted by an LLM together with an exact quote from the expected page; a script rejects any question whose quote is not on that page; a human checks a random sample of 10.
-- **Metrics**: recall@5 (expected page among retrieved chunks), correctness and faithfulness (LLM judge from another model family than the answering model, checked by hand on 10 answers), correct refusals, median latency, median cost.
+- **Metrics**: recall@5 (expected page among retrieved chunks), correctness and faithfulness (LLM judge from another model family than the answering model, checked by hand on 10 answers), correct refusals, median and p95 latency per stage (embedding, search, model), median cost.
+  `ask()` returns these timings; Langfuse keeps them per question. A later agent mode is one more `mode`, measured the same way.
 - **In CI**: every pull request that touches ingestion, retrieval or prompts runs a 15-question subset and posts the difference with `main`. A drop in recall@5 or correct refusals fails the check.
 - **Reference run**: one full run of both modes with the demo's model, published in `eval/results/` and in the README.
 - With 40 questions, a 1 or 2 point difference is noise; results say so.
 
 ## Demo
+
+Three pages, in a clean, airy style with automatic dark mode:
+
+- **Home**: one large prompt; device chips under it pick the manual (the last one is remembered).
+  The answer streams in; each citation is a `p. 42` chip that opens the manual at that page.
+  A quiet line under it gives the timings and cost: `Search 105 ms · Answer 1.9 s · $0.001`.
+- **Inventory**: one card per device (line icon by kind, name, model, pages, manual link); a card opens Home with that device selected.
+- **Benchmark**: `rag` against `full` (correctness, latency, cost), read from `eval/results/`.
 
 - Fixed devices, `rag` mode only; `full` is shown through its measured results.
 - Rate limit per visitor (10 questions per hour), token cap per answer, budget alerts.
