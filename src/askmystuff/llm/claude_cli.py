@@ -24,45 +24,27 @@ def _run(args: list[str], *, input: str) -> subprocess.CompletedProcess[str]:
 
 def _stream(args: list[str], *, input: str) -> Iterator[str]:
     """Run `claude` and yield its stdout line by line; raise once it ends if it failed."""
+    pipe = subprocess.PIPE
     try:
-        process = subprocess.Popen(
-            args,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        process = subprocess.Popen(args, stdin=pipe, stdout=pipe, stderr=pipe, text=True)
     except OSError as error:
         raise LLMError(f"claude CLI could not run: {error}") from error
-    assert process.stdin is not None
-    assert process.stdout is not None
-    assert process.stderr is not None
-    timed_out = threading.Event()
-
-    def kill() -> None:
-        timed_out.set()
-        process.kill()
-
-    timer = threading.Timer(TIMEOUT_S, kill)
+    assert process.stdin and process.stdout and process.stderr
+    timer = threading.Timer(TIMEOUT_S, process.kill)  # a killed claude exits with a failure
     timer.start()
-    try:
+    with process:  # closes the pipes and waits
         try:
-            process.stdin.write(input)
-            process.stdin.close()
-        except BrokenPipeError:
-            pass  # claude exited early: its output tells why
-        yield from process.stdout
-        stderr = process.stderr.read()
-        returncode = process.wait()
-    finally:
-        timer.cancel()
-        if process.poll() is None:  # the caller stopped reading
-            process.kill()
-            process.wait()
-        process.stdout.close()
-        process.stderr.close()
-    if timed_out.is_set():
-        raise LLMError(f"claude CLI timed out after {TIMEOUT_S} s")
+            try:
+                process.stdin.write(input)
+                process.stdin.close()
+            except BrokenPipeError:
+                pass  # claude exited early: its output tells why
+            yield from process.stdout
+            stderr = process.stderr.read()
+            returncode = process.wait()
+        finally:
+            timer.cancel()
+            process.kill()  # no-op once it exited; stops it if the caller stopped reading
     if returncode != 0:
         raise LLMError(f"claude CLI exited with {returncode}: {stderr.strip()}")
 
