@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="du-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a3ad8a"/><stop offset="1" stop-color="#6f7a5c"/></linearGradient>
+    <linearGradient id="du-glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9ec3e6"/><stop offset="1" stop-color="#3d5873"/></linearGradient>
+  </defs>
+  <ellipse cx="120" cy="172" rx="104" ry="8" fill="#000" opacity="0.14"/>
+  <rect x="64" y="70" width="98" height="5" rx="2.5" fill="#2b2d31"/>
+  <path d="M20 140 L22 118 Q24 108 36 104 L62 98 L82 78 Q86 75 92 75 L156 75 Q164 75 170 81 L190 100 L212 106 Q222 109 222 120 L222 140 Q222 146 216 146 L26 146 Q20 146 20 140 Z" fill="url(#du-body)"/>
+  <path d="M70 99 L88 81 Q90 80 93 80 L122 80 L122 99 Z" fill="url(#du-glass)"/>
+  <path d="M128 80 L154 80 Q160 80 164 84 L180 99 L128 99 Z" fill="url(#du-glass)"/>
+  <rect x="123" y="80" width="5" height="20" fill="#2b2d31"/>
+  <path d="M20 132 L222 132 L222 140 Q222 146 216 146 L26 146 Q20 146 20 140 Z" fill="#2b2d31"/>
+  <path d="M36 146 A26 26 0 0 1 88 146 Z M156 146 A26 26 0 0 1 208 146 Z" fill="#1d1e21"/>
+  <path d="M206 112 L220 114 L220 122 L208 121 Z" fill="#f2f2e6"/>
+  <path d="M196 113 L206 113 L204 118 L194 118 Z" fill="#f2f2e6" opacity="0.8"/>
+  <rect x="22" y="112" width="8" height="8" rx="2" fill="#c8402f"/>
+  <path d="M104 112 H116" stroke="#4f5844" stroke-width="3" stroke-linecap="round"/>
+  <path d="M146 112 H158" stroke="#4f5844" stroke-width="3" stroke-linecap="round"/>
+  <g>
+    <circle cx="62" cy="148" r="20" fill="#202125"/><circle cx="62" cy="148" r="11" fill="#9aa0a8"/><circle cx="62" cy="148" r="4" fill="#3a3c41"/>
+    <circle cx="182" cy="148" r="20" fill="#202125"/><circle cx="182" cy="148" r="11" fill="#9aa0a8"/><circle cx="182" cy="148" r="4" fill="#3a3c41"/>
+  </g>
+</svg>

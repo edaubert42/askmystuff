@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="tp-screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f6bff"/><stop offset="0.6" stop-color="#5b4bff"/><stop offset="1" stop-color="#19c3c9"/></linearGradient>
+    <linearGradient id="tp-base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3d45"/><stop offset="1" stop-color="#22242a"/></linearGradient>
+  </defs>
+  <ellipse cx="120" cy="196" rx="96" ry="8" fill="#000" opacity="0.12"/>
+  <rect x="44" y="44" width="152" height="100" rx="8" fill="#26282e"/>
+  <rect x="51" y="51" width="138" height="86" rx="3" fill="url(#tp-screen)"/>
+  <path d="M51 120 C 90 92, 130 140, 189 100 L189 137 L51 137 Z" fill="#fff" opacity="0.12"/>
+  <circle cx="120" cy="47.5" r="1.6" fill="#4a4d55"/>
+  <path d="M44 146 L196 146 L218 186 Q218 190 214 190 L26 190 Q22 190 22 186 Z" fill="url(#tp-base)"/>
+  <g fill="#15161a">
+    <path d="M52 152 L188 152 L194 164 L46 164 Z"/>
+    <path d="M44 167 L196 167 L200 175 L40 175 Z"/>
+  </g>
+  <circle cx="120" cy="167" r="2.4" fill="#e2231a"/>
+  <rect x="98" y="178" width="44" height="8" rx="2" fill="#2e3037"/>
+  <rect x="22" y="188" width="196" height="4" rx="2" fill="#1a1b20"/>
+</svg>

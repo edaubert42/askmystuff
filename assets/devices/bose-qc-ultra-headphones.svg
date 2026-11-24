@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="qc-cup" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e3d6bf"/><stop offset="1" stop-color="#bfae90"/></linearGradient>
+    <linearGradient id="qc-band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9cbb2"/><stop offset="1" stop-color="#b5a383"/></linearGradient>
+  </defs>
+  <ellipse cx="120" cy="208" rx="78" ry="7" fill="#000" opacity="0.12"/>
+  <path d="M58 132 C 52 64, 86 30, 120 30 C 154 30, 188 64, 182 132" fill="none" stroke="url(#qc-band)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M66 120 C 62 70, 90 44, 120 44 C 150 44, 178 70, 174 120" fill="none" stroke="#7d6e57" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+  <rect x="54" y="118" width="10" height="22" rx="4" fill="#9c8a6c"/>
+  <rect x="176" y="118" width="10" height="22" rx="4" fill="#9c8a6c"/>
+  <ellipse cx="62" cy="164" rx="30" ry="40" fill="url(#qc-cup)"/>
+  <ellipse cx="178" cy="164" rx="30" ry="40" fill="url(#qc-cup)"/>
+  <ellipse cx="74" cy="164" rx="16" ry="32" fill="#5f5444"/>
+  <ellipse cx="166" cy="164" rx="16" ry="32" fill="#5f5444"/>
+  <path d="M44 146 Q48 132 58 128" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+  <path d="M196 146 Q192 132 182 128" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+</svg>
