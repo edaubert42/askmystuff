@@ -1,10 +1,13 @@
 """llm.stream(): the subprocess and the HTTP call are replaced by recorded streams, nothing else."""
 
 import dataclasses
+import io
 import json
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
 from typing import Any
 
@@ -261,6 +264,32 @@ def test_gemini_streams_from_the_sse_endpoint_with_the_key_and_the_same_body(htt
     assert headers["x-goog-api-key"] == "test-key-not-real"
     assert body["systemInstruction"] == {"parts": [{"text": "Answer from the manual only."}]}
     assert body["contents"] == [{"role": "user", "parts": [{"text": "How do I pair it?"}]}]
+
+
+def test_the_real_sse_reader_parses_data_lines_and_maps_http_and_json_errors(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Only the network (`urlopen`) is faked; the reader under test is the real one.
+    post = gemini._post_stream  # pyright: ignore[reportPrivateUsage]
+
+    def serve(reply: bytes | Exception) -> Iterator[dict[str, Any]]:
+        def urlopen(request: Any, timeout: float) -> io.BytesIO:
+            if isinstance(reply, Exception):
+                raise reply
+            return io.BytesIO(reply)
+
+        monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+        return post("https://example.test/s", {}, {})
+
+    events = serve(b'data: {"a": 1}\n\n: comment\ndata:{"b": 2}\r\n')
+    assert list(events) == [{"a": 1}, {"b": 2}]
+    refused = urllib.error.HTTPError("u", 503, "busy", {}, io.BytesIO(b"overloaded"))  # pyright: ignore[reportArgumentType]
+    with pytest.raises(gemini.HttpError, match="HTTP 503: overloaded"):
+        list(serve(refused))
+    with pytest.raises(llm.LLMError, match="unexpected JSON"):
+        list(serve(b"data: {not json\n"))
+    with pytest.raises(llm.LLMError, match="unreachable"):
+        list(serve(urllib.error.URLError("no route")))
 
 
 def test_gemini_stream_fails_before_any_call_without_a_price_or_a_key(
